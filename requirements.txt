@@ -1,0 +1,14 @@
+numpy
+opencv-python
+Pillow
+tensorboardX
+torch
+torchnet
+torchvision
+tqdm
+torch-ema
+torchdiffeq
+wandb
+scikit-learn
+scipy
+matplotlib
