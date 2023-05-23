@@ -129,79 +129,6 @@ class FlowTrainer:
                         %(self.args.dataset, self.args.ratio, self.args.noise_mode, epoch, self.args.num_epochs, batch_idx+1, num_iter, loss_nll.item()))
             sys.stdout.flush()
 
-    def warmup_ssl_mixup(self, epoch, net, flowNet, optimizer, optimizerFlow, dataloader, updateCenter = False):
-        flowNet.train()
-        net.train()
-        
-        num_iter = (len(dataloader.dataset)//dataloader.batch_size)+1
-        
-        for batch_idx, (inputs_w1, inputs_w2, inputs_s3, inputs_s4, labels) in enumerate(dataloader): 
-            inputs_w1, inputs_w2, inputs_s3, inputs_s4, labels = inputs_w1.cuda(), inputs_w2.cuda(), inputs_s3.cuda(), inputs_s4.cuda(), labels.cuda()
-            
-            labels_one_hot = torch.nn.functional.one_hot(labels, self.args.num_class).type(torch.cuda.FloatTensor)
-
-            inputs, labels_one_hot = mix_match(inputs_w1, labels_one_hot, self.args.alpha)    
-
-            _, outputs, feature_flow = net(inputs, get_feature = True)
-            flow_labels = labels_one_hot.unsqueeze(1).cuda()
-            logFeature(feature_flow)      
-  
-            # == flow ==
-            loss_nll, log_p2 = self.log_prob(flow_labels, feature_flow, flowNet)
-            # == flow end ===
-
-            loss_ce = self.CEloss(outputs, labels)
-            penalty = self.conf_penalty(outputs)
-            
-            # == Unsupervised Contrastive Loss ===
-            # inputs_s34 = torch.cat([inputs_s3, inputs_s4], dim=0)
-            # f, _ = net(inputs_s34)
-            # f1 = f[:inputs_s3.size(0)]
-            # f2 = f[inputs_s3.size(0):]
-            # features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-            # loss_simCLR = self.contrastive_criterion(features)
-            # =================
-            f1, _ = net(inputs_s3)
-            f2, _ = net(inputs_s4)
-            features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-            loss_simCLR = self.contrastive_criterion(features)
-            # == Unsupervised Contrastive Loss End ===
-
-            if self.args.lossType == "mix":
-                L = loss_ce + (self.args.lambda_f * loss_nll)
-            elif self.args.lossType == "ce":
-                L = loss_ce
-            elif self.args.lossType == "nll":
-                L = (self.args.lambda_f * loss_nll)
-            L += loss_simCLR
-            optimizer.zero_grad()
-            optimizerFlow.zero_grad()
-            L.backward()
-            optimizer.step()
-            optimizerFlow.step()  
-            
-            if self.args.centering and updateCenter:
-                    _, _ = self.get_pseudo_label(net, flowNet, inputs, inputs, std = self.args.pseudo_std, updateCnetering = True)
-
-            ## wandb
-            if (wandb != None):
-                logMsg = {}
-                logMsg["epoch"] = epoch
-                logMsg["loss/nll"] = loss_nll.item()
-                logMsg["loss/nll_max"] = (-log_p2).max()
-                logMsg["loss/nll_min"] = (-log_p2).min()
-                logMsg["loss/nll_var"] = (-log_p2).var()
-                wandb.log(logMsg)
-
-            sys.stdout.write('\r')
-            if self.args.isRealTask:
-                sys.stdout.write('%s | Epoch [%3d/%3d] Iter[%3d/%3d]\t NLL-loss: %.4f'
-                        %(self.args.dataset, epoch, self.args.num_epochs, batch_idx+1, num_iter, loss_nll.item()))
-            else:
-                sys.stdout.write('%s:%.1f-%s | Epoch [%3d/%3d] Iter[%3d/%3d]\t NLL-loss: %.4f'
-                        %(self.args.dataset, self.args.ratio, self.args.noise_mode, epoch, self.args.num_epochs, batch_idx+1, num_iter, loss_nll.item()))
-            sys.stdout.flush()
-              
     def train(self, epoch, net1, flowNet1, net2, flowNet2, optimizer, optimizerFlow, labeled_trainloader, unlabeled_trainloader):
         net1.train()
         flowNet1.train()
@@ -302,7 +229,10 @@ class FlowTrainer:
             all_inputs  = torch.cat([inputs_x3, inputs_x4, inputs_u3, inputs_u4], dim=0)
             all_targets = torch.cat([targets_x, targets_x, targets_u, targets_u], dim=0)
 
-            mixed_input, mixed_target = mix_match(all_inputs, all_targets, self.args.alpha)
+            self.args.use_mix_match:
+                mixed_input, mixed_target = mix_match(all_inputs, all_targets, self.args.alpha)
+            else:
+                mixed_input, mixed_target = all_inputs, all_targets
                     
             _, logits, flow_feature = net1(mixed_input, get_feature = True) # add flow_feature
         

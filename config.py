@@ -67,8 +67,9 @@ def argumentParse(input_args = None):
     parser.add_argument('--warmup_mixup', default=False, type=bool, help = 'warmup use mixup')
     parser.add_argument('--testSTD', default=False, type=bool, help = 'test acc std 0.2~1.0')
     parser.add_argument('--save_last', default=False, type=bool, help = 'save last model')
-    parser.add_argument('--clr_loss', default=True, type=bool, help = 'use contrastive loss simCLR')
-    
+    parser.add_argument('--clr_loss', default=False, type=bool, help = 'use contrastive loss simCLR')
+    parser.add_argument('--use_mix_match', default=True, type=bool, help = 'use mix_match')
+    parser.add_argument('--wo_semi_sup', default=False, type=bool, help = 'use mix_match')
     # Flow hyperparameters
     parser.add_argument('--flow_modules', default="8-8-8-8", type=str)
     parser.add_argument('--tol', default=1e-5, type=float, help='flow atol, rtol')
