@@ -229,7 +229,7 @@ class FlowTrainer:
             all_inputs  = torch.cat([inputs_x3, inputs_x4, inputs_u3, inputs_u4], dim=0)
             all_targets = torch.cat([targets_x, targets_x, targets_u, targets_u], dim=0)
 
-            self.args.use_mix_match:
+            if self.args.use_mix_match:
                 mixed_input, mixed_target = mix_match(all_inputs, all_targets, self.args.alpha)
             else:
                 mixed_input, mixed_target = all_inputs, all_targets
