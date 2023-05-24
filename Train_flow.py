@@ -183,7 +183,10 @@ class NegEntropy(object):
         return torch.mean(torch.sum(probs.log()*probs, dim=1))
 
 def create_model(args):
-    model = ResNet18(num_classes=args.num_class, feature_dim=args.cond_size)
+    if args.dataset=='WebVision':
+        model = InceptionResNetV2(num_classes=args.num_class, feature_dim=args.cond_size)
+    else:
+        model = ResNet18(num_classes=args.num_class, feature_dim=args.cond_size)
     model = model.cuda()
     return model
 
@@ -274,6 +277,9 @@ if __name__ == '__main__':
     elif args.dataset=='TinyImageNet':
         from PreResNet_tiny import *
         from dataloader_tiny import tinyImagenet_dataloader as dataloader
+    elif args.dataset=='WebVision':
+        from InceptionResNetV2 import *
+        from dataloader_webvision import webvision_dataloader as dataloader
 
     ## Checkpoint Location
     if  args.isRealTask:
@@ -305,7 +311,7 @@ if __name__ == '__main__':
             project_name = "FlowUNICON"
         else:
             project_name = "FlowUNICON_" + args.dataset
-        wandb.init(project=project_name, entity="andy-su", name=folder)
+        wandb.init(project=project_name, entity="suyihao1999", name=folder)
         wandb.run.log_code(".")
         wandb.config.update(args)
         wandb.define_metric("acc/test", summary="max")
@@ -320,6 +326,8 @@ if __name__ == '__main__':
             root_dir=model_save_loc, noise_file='%s/clean_%.4f_%s.npz'%(args.data_path,args.ratio, args.noise_mode))
     elif args.dataset == 'TinyImageNet':
         loader = dataloader(root=args.data_path, batch_size=args.batch_size, num_workers=args.num_workers, ratio = args.ratio, noise_mode = args.noise_mode, noise_file='%s/clean_%.2f_%s.npz'%(args.data_path,args.ratio, args.noise_mode))
+    elif args.dataset == 'WebVision':
+        loader = dataloader(batch_size=args.batch_size,num_workers=args.num_workers,root_dir=args.data_path, num_class=args.num_class)
 
     print('| Building net')
     net1 = create_model(args)
@@ -347,6 +355,11 @@ if __name__ == '__main__':
         schedulerFlow1 = optim.lr_scheduler.ExponentialLR(optimizerFlow1, 0.98)
         scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, 0.98)
         schedulerFlow2 = optim.lr_scheduler.ExponentialLR(optimizerFlow2, 0.98)
+    elif args.dataset=='WebVision':
+        scheduler1 = optim.lr_scheduler.ExponentialLR(optimizer1, 0.99)
+        schedulerFlow1 = optim.lr_scheduler.ExponentialLR(optimizerFlow1, 0.99)
+        scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, 0.99)
+        schedulerFlow2 = optim.lr_scheduler.ExponentialLR(optimizerFlow2, 0.99)
     else:
         scheduler1 = optim.lr_scheduler.CosineAnnealingLR(optimizer1, args.num_epochs, args.lr / 1e2)
         schedulerFlow1 = optim.lr_scheduler.CosineAnnealingLR(optimizerFlow1, args.num_epochs, args.lr_f / 1e2)
@@ -382,6 +395,9 @@ if __name__ == '__main__':
 
     best_acc = 0
 
+    if args.jumpRestart:
+        mid_warmup = 3
+
     ## Warmup and SSL-Training 
     for epoch in range(start_epoch,args.num_epochs+1):
         startTime = time.time() 
@@ -398,6 +414,13 @@ if __name__ == '__main__':
             flowTrainer.warmup_standard(epoch, net1, flowNet1, optimizer1, optimizerFlow1, warmup_trainloader)
 
             print('\nWarmup Model Net 2')
+            flowTrainer.warmup_standard(epoch, net2, flowNet2, optimizer2, optimizerFlow2, warmup_trainloader)   
+        ## Jump-Restart
+        elif args.jumpRestart and (epoch+1) % mid_warmup == 0:
+            warmup_trainloader = loader.run(0.5, 'warmup')
+            print('Mid-training Warmup Net1')
+            flowTrainer.warmup_standard(epoch, net1, flowNet1, optimizer1, optimizerFlow1, warmup_trainloader)   
+            print('\nMid-training Warmup Net2')
             flowTrainer.warmup_standard(epoch, net2, flowNet2, optimizer2, optimizerFlow2, warmup_trainloader)   
         else:
             run(1, net1, flowNet1, net2, flowNet2, optimizer1, optimizerFlow1)

@@ -44,6 +44,11 @@ Training (TinyImageNet with 50% symmetric noise)
 Train_flow.py -r 0.5 --config ./config/tinyImageNet.yaml
 ```
 
+Training (WebVision)
+```bash
+Train_flow.py --config ./config/webVision.yaml 
+```
+
 
 
 <br></br>

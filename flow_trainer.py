@@ -201,7 +201,7 @@ class FlowTrainer:
                 sys.stdout.write('%s:%.1f-%s | Epoch [%3d/%3d] Iter[%3d/%3d]\t NLL-loss: %.4f'
                         %(self.args.dataset, self.args.ratio, self.args.noise_mode, epoch, self.args.num_epochs, batch_idx+1, num_iter, loss_nll.item()))
             sys.stdout.flush()
-              
+
     def train(self, epoch, net1, flowNet1, net2, flowNet2, optimizer, optimizerFlow, labeled_trainloader, unlabeled_trainloader):
         net1.train()
         flowNet1.train()
@@ -211,7 +211,6 @@ class FlowTrainer:
         unlabeled_train_iter = iter(unlabeled_trainloader)
         num_iter = (len(labeled_trainloader.dataset)//labeled_trainloader.batch_size)+1 
 
-        # for batch_idx, (inputs_x, inputs_x2, inputs_x3, inputs_x4, labels_x, w_x, labels_x_o, blur) in enumerate(labeled_trainloader): 
         for batch_idx, (inputs_x, inputs_x2, inputs_x3, inputs_x4, labels_x, w_x, labels_x_o) in enumerate(labeled_trainloader): 
             try:
                 inputs_u, inputs_u2, inputs_u3, inputs_u4, labels_u_o = next(unlabeled_train_iter)
@@ -445,10 +444,13 @@ class FlowTrainer:
         model = model.cuda()
         return model
 
-    def predict(self, flowNet, feature, mean = 0, std = 0, sample_n = 50, centering = False, normalize = True):
+    def predict(self, flowNet, feature, mean = 0, std = 0.2, sample_n = 50, centering = False, normalize = True):
         with torch.no_grad():
             batch_size = feature.size()[0]
-            input_z = torch.normal(mean = mean, std = std, size=(batch_size, sample_n, self.args.num_class)).cuda()
+            if std == 0:
+                input_z = torch.zeros(batch_size, 1, self.args.num_class).cuda()
+            else:
+                input_z = torch.normal(mean = mean, std = std, size=(batch_size, sample_n, self.args.num_class)).cuda()
             approx21 = flowNet(input_z, feature, None, reverse=True)
             if len(self.args.gpuid) > 1:
                 approx21_center = approx21 - flowNet.module.center
