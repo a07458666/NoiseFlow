@@ -355,11 +355,6 @@ if __name__ == '__main__':
         schedulerFlow1 = optim.lr_scheduler.ExponentialLR(optimizerFlow1, 0.98)
         scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, 0.98)
         schedulerFlow2 = optim.lr_scheduler.ExponentialLR(optimizerFlow2, 0.98)
-    elif args.dataset=='WebVision':
-        scheduler1 = optim.lr_scheduler.ExponentialLR(optimizer1, 0.99)
-        schedulerFlow1 = optim.lr_scheduler.ExponentialLR(optimizerFlow1, 0.99)
-        scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, 0.99)
-        schedulerFlow2 = optim.lr_scheduler.ExponentialLR(optimizerFlow2, 0.99)
     else:
         scheduler1 = optim.lr_scheduler.CosineAnnealingLR(optimizer1, args.num_epochs, args.lr / 1e2)
         schedulerFlow1 = optim.lr_scheduler.CosineAnnealingLR(optimizerFlow1, args.num_epochs, args.lr_f / 1e2)
@@ -396,7 +391,7 @@ if __name__ == '__main__':
     best_acc = 0
 
     if args.jumpRestart:
-        mid_warmup = 3
+        mid_warmup = 25
 
     ## Warmup and SSL-Training 
     for epoch in range(start_epoch,args.num_epochs+1):
@@ -404,10 +399,12 @@ if __name__ == '__main__':
         test_loader = loader.run(0, 'val')
         eval_loader = loader.run(0, 'eval_train')
         warmup_trainloader = loader.run(0,'warmup')
-
+        
+        if args.dataset=='WebVision':
+            manually_learning_rate(epoch, optimizer1, optimizerFlow1, optimizer2, optimizerFlow2, args.lr, args.lr_f, mid_warmup)
         print("Data Size : ", len(warmup_trainloader.dataset))
-
-        if epoch<args.warm_up:
+        ## Warmup Stage 
+        if epoch<args.warm_up:       
             warmup_trainloader = loader.run(0, 'warmup')
 
             print('\nWarmup Model Net 1')
@@ -417,6 +414,8 @@ if __name__ == '__main__':
             flowTrainer.warmup_standard(epoch, net2, flowNet2, optimizer2, optimizerFlow2, warmup_trainloader)   
         ## Jump-Restart
         elif args.jumpRestart and (epoch+1) % mid_warmup == 0:
+            manually_learning_rate(epoch, optimizer1, optimizerFlow1, optimizer2, optimizerFlow2, args.lr, args.lr_f, mid_warmup)
+
             warmup_trainloader = loader.run(0.5, 'warmup')
             print('Mid-training Warmup Net1')
             flowTrainer.warmup_standard(epoch, net1, flowNet1, optimizer1, optimizerFlow1, warmup_trainloader)   
@@ -428,15 +427,15 @@ if __name__ == '__main__':
         
         ## Acc
         acc, confidence = flowTrainer.testByFlow(epoch, net1, flowNet1, net2, flowNet2, test_loader)
-        
         if args.testSTD:
             for test_std in [0.0, 0.2, 0.5, 0.8, 1.0]:
                 flowTrainer.testSTD(epoch, net1, flowNet1, net2, flowNet2, test_loader, sample_std = test_std)
         
-        scheduler1.step()
-        schedulerFlow1.step()
-        scheduler2.step()
-        schedulerFlow2.step()
+        if not (args.dataset=='WebVision'):
+            scheduler1.step()
+            schedulerFlow1.step()
+            scheduler2.step()
+            schedulerFlow2.step()
 
         ## wandb
         if (wandb != None):
