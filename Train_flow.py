@@ -311,7 +311,7 @@ if __name__ == '__main__':
             project_name = "FlowUNICON"
         else:
             project_name = "FlowUNICON_" + args.dataset
-        wandb.init(project=project_name, entity="suyihao1999", name=folder)
+        wandb.init(project=project_name, name=folder)
         wandb.run.log_code(".")
         wandb.config.update(args)
         wandb.define_metric("acc/test", summary="max")
