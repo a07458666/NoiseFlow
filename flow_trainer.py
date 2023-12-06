@@ -255,8 +255,8 @@ class FlowTrainer:
                 elif self.args.lossType == "mix":
                     targets_u = (pu_net_sp_1 + pu_net_sp_2 + pu_flow_1 + pu_flow_2) / 4
 
-                targets_u = targets_u.detach()        
-
+                targets_u = targets_u.detach() 
+                
                 ## Label refinement
                 px_net_1, px_flow_1 = self.get_pseudo_label(net1, flowNet1, inputs_x, inputs_x2, std = self.args.pseudo_std)
                 # px_net_2, px_flow_2 = self.get_pseudo_label(net2, flowNet2, inputs_x2, inputs_x2, std = self.args.pseudo_std)
@@ -297,6 +297,14 @@ class FlowTrainer:
                 loss_simCLR = self.contrastive_criterion(features)
             else:
                 loss_simCLR = torch.tensor(0).cuda()
+                
+            ## calculate OOD sample
+            ind_idx, ood_rate = self.get_ind_idx(targets_u, epoch+batch_idx/num_iter)
+            print("befor len targets_u: ", len(targets_u))
+            inputs_u3 = inputs_u3[ind_idx]
+            inputs_u4 = inputs_u4[ind_idx]
+            targets_u = targets_u[ind_idx]
+            print("after len targets_u: ", len(targets_u))
 
             all_inputs  = torch.cat([inputs_x3, inputs_x4, inputs_u3, inputs_u4], dim=0)
             all_targets = torch.cat([targets_x, targets_x, targets_u, targets_u], dim=0)
@@ -367,9 +375,10 @@ class FlowTrainer:
                 logMsg["loss/nll_x_max"] = loss_nll_x.max()
                 logMsg["loss/nll_x_min"] = loss_nll_x.min()
                 logMsg["loss/nll_x_var"] = loss_nll_x.var()
-                logMsg["loss/nll_u_max"] = loss_nll_u.max()
-                logMsg["loss/nll_u_min"] = loss_nll_u.min()
-                logMsg["loss/nll_u_var"] = loss_nll_u.var()
+                if len(targets_u) > 0:
+                    logMsg["loss/nll_u_max"] = loss_nll_u.max()
+                    logMsg["loss/nll_u_min"] = loss_nll_u.min()
+                    logMsg["loss/nll_u_var"] = loss_nll_u.var()
 
                 logMsg["loss/simCLR"] = loss_simCLR.item()
 
@@ -398,6 +407,7 @@ class FlowTrainer:
                         logMsg["centering(min)"] = flowNet1.center.min().item()
                         logMsg["centering(min)"] = flowNet1.center.min().item()
 
+                logMsg["ood_rate"] = ood_rate
                 wandb.log(logMsg)
             
             sys.stdout.write('\r')
@@ -769,3 +779,14 @@ class FlowTrainer:
             flowNet.module.center = flowNet.module.center * self.center_momentum + batch_center * (1 - self.center_momentum)
         else:
             flowNet.center = flowNet.center * self.center_momentum + batch_center * (1 - self.center_momentum)
+
+    def get_ind_idx(self, pred, epoch):
+        threshold_confidence = linear_rampup(epoch, self.warm_up, 100, 1 / self.args.num_class, 0.8)
+        confidence = torch.max(pred, dim=1).values
+        pred_label = torch.max(pred, dim=1).indices
+        
+        print(f"threshold_confidence : {threshold_confidence}")
+        print(f"confidence : {confidence}")
+        ind_idx = (confidence > threshold_confidence)
+        ood_rate = 1 - (ind_idx.sum().item() / len(ind_idx))
+        return ind_idx, ood_rate
