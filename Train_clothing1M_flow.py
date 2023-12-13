@@ -87,6 +87,7 @@ parser.add_argument('--jumpRestart', default=False, type=bool, help = 'jumpResta
 parser.add_argument('--mid_warmup', default=10, type=float, help='jump restart epoch')
 
 parser.add_argument('--drop_rate', default=0.01, type=float, help='drop rate')
+parser.add_argument('--drop_start', default=0, type=int, help='drop start epoch')
 args = parser.parse_args()
 
 # torch.cuda.set_device(args.gpuid)
@@ -380,16 +381,12 @@ def run(idx, net1, flowNet1, net2, flowNet2, optimizer, optimizerFlow, nb_repeat
     prob, paths, confidence = Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2, get_confidence=True)
 
     # calculate drop OOD samples
-    drop_threshold = torch.sort(confidence)[0][int(len(confidence) * args.drop_rate)]
-    drop_image_path_list = [p for p, c in zip(paths, confidence) if c < drop_threshold]
-    
-    # log drop image list
-    if (wandb != None):
-        logMsg = {}
-        logMsg["epoch"] = epoch
-        logMsg["drop_image_list"] = wandb.Table(data=drop_image_path_list)
-        wandb.log(logMsg)
-    
+    if args.drop_start <= epoch:
+        drop_threshold = torch.sort(confidence)[0][int(len(confidence) * args.drop_rate)]
+        drop_image_path_list = [p for p, c in zip(paths, confidence) if c < drop_threshold]
+    else:
+        drop_image_path_list = []
+        
     threshold   = torch.mean(prob)                                           ## Simply Take the average as the threshold
     SR = torch.sum(prob<threshold).item()/prob.size()[0]                    ## Calculate the Ratio of clean samples      
     labeled_trainloader, unlabeled_trainloader = loader.run(SR, 'train', prob= prob,  paths=paths, drop_paths=drop_image_path_list) # Uniform Selection
