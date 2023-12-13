@@ -299,12 +299,12 @@ class FlowTrainer:
                 loss_simCLR = torch.tensor(0).cuda()
                 
             ## calculate OOD sample
-            ind_idx, ood_rate = self.get_ind_idx(targets_u, epoch+batch_idx/num_iter)
-            print("befor len targets_u: ", len(targets_u))
-            inputs_u3 = inputs_u3[ind_idx]
-            inputs_u4 = inputs_u4[ind_idx]
-            targets_u = targets_u[ind_idx]
-            print("after len targets_u: ", len(targets_u))
+            # ind_idx, ood_rate = self.get_ind_idx(targets_u, epoch+batch_idx/num_iter)
+            # print("befor len targets_u: ", len(targets_u))
+            # inputs_u3 = inputs_u3[ind_idx]
+            # inputs_u4 = inputs_u4[ind_idx]
+            # targets_u = targets_u[ind_idx]
+            # print("after len targets_u: ", len(targets_u))
 
             all_inputs  = torch.cat([inputs_x3, inputs_x4, inputs_u3, inputs_u4], dim=0)
             all_targets = torch.cat([targets_x, targets_x, targets_u, targets_u], dim=0)
@@ -407,7 +407,7 @@ class FlowTrainer:
                         logMsg["centering(min)"] = flowNet1.center.min().item()
                         logMsg["centering(min)"] = flowNet1.center.min().item()
 
-                logMsg["ood_rate"] = ood_rate
+                # logMsg["ood_rate"] = ood_rate
                 wandb.log(logMsg)
             
             sys.stdout.write('\r')
@@ -418,7 +418,7 @@ class FlowTrainer:
             sys.stdout.flush()
 
     ## Calculate JSD
-    def Calculate_JSD(self, net1, flowNet1, net2, flowNet2, num_samples, eval_loader):  
+    def Calculate_JSD(self, net1, flowNet1, net2, flowNet2, num_samples, eval_loader):
         net1.eval()
         net2.eval()
         flowNet1.eval()
