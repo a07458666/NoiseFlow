@@ -42,7 +42,7 @@ parser.add_argument('--lambda_c', default=0.025, type=float, help='weight for co
 parser.add_argument('--T', default=0.5, type=float, help='sharpening temperature')
 parser.add_argument('--num_epochs', default=200, type=int)
 parser.add_argument('--id', default='clothing1m')
-parser.add_argument('--data_path', default='./data/Clothing1M_org', type=str, help='path to dataset')
+parser.add_argument('--data_path', default='../../dataset/clothing1M/', type=str, help='path to dataset')
 parser.add_argument('--seed', default=123)
 parser.add_argument('--gpuid', default="0", help='comma separated list of GPU(s) to use.')
 parser.add_argument('--pretrained', default=False, type=bool)
@@ -86,6 +86,7 @@ parser.add_argument('--clr_loss', default=True, type=bool, help = 'use contrasti
 parser.add_argument('--jumpRestart', default=False, type=bool, help = 'jumpRestart')
 parser.add_argument('--mid_warmup', default=10, type=float, help='jump restart epoch')
 
+parser.add_argument('--drop_rate', default=0.01, type=float, help='drop rate')
 args = parser.parse_args()
 
 # torch.cuda.set_device(args.gpuid)
@@ -225,7 +226,7 @@ def warmup_standard(epoch, net, flowNet, optimizer, optimizerFlow, dataloader, u
         sys.stdout.flush()
 
 ## Calculate JSD
-def Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2):
+def Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2, get_confidence = False):
     net1.eval()
     net2.eval()
     flowNet1.eval()
@@ -233,6 +234,7 @@ def Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2):
 
     num_samples = args.num_batches*args.batch_size
     prob = torch.zeros(num_samples)
+    confidence = torch.zeros(num_samples)
     paths = []
     n=0
     eval_loader = loader.run(0, 'eval_train')
@@ -260,7 +262,7 @@ def Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2):
         # dist = JS_dist(out,  F.one_hot(targets, num_classes = args.num_class))
         dist = js_distance(out, targets, args.num_class)
         prob[int(batch_idx*batch_size):int((batch_idx+1)*batch_size)] = dist 
-        
+        confidence[int(batch_idx*batch_size):int((batch_idx+1)*batch_size)] = out.max(dim=1).values
         for b in range(inputs.size(0)):
             paths.append(path[b])
             n+=1
@@ -269,7 +271,9 @@ def Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2):
         sys.stdout.write('| Evaluating loss Iter %3d\t' %(batch_idx)) 
         sys.stdout.flush()
             
-    return prob,paths  
+    if get_confidence:
+        return prob,paths,confidence
+    return prob,paths
 
 ## Penalty for Asymmetric Noise    
 class NegEntropy(object):
@@ -373,11 +377,22 @@ def save_model(idx, net, flowNet):
 def run(idx, net1, flowNet1, net2, flowNet2, optimizer, optimizerFlow, nb_repeat):
     ## Calculate JSD values and Filter Rate
     print(f"Calculate JSD Net {idx}\n")
-    prob, paths = Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2)
+    prob, paths, confidence = Calculate_JSD(epoch, net1, flowNet1, net2, flowNet2, get_confidence=True)
 
+    # calculate drop OOD samples
+    drop_threshold = torch.sort(confidence)[0][int(len(confidence) * args.drop_rate)]
+    drop_image_path_list = [p for p, c in zip(paths, confidence) if c < drop_threshold]
+    
+    # log drop image list
+    if (wandb != None):
+        logMsg = {}
+        logMsg["epoch"] = epoch
+        logMsg["drop_image_list"] = wandb.Table(data=drop_image_path_list)
+        wandb.log(logMsg)
+    
     threshold   = torch.mean(prob)                                           ## Simply Take the average as the threshold
     SR = torch.sum(prob<threshold).item()/prob.size()[0]                    ## Calculate the Ratio of clean samples      
-    labeled_trainloader, unlabeled_trainloader = loader.run(SR, 'train', prob= prob,  paths=paths) # Uniform Selection
+    labeled_trainloader, unlabeled_trainloader = loader.run(SR, 'train', prob= prob,  paths=paths, drop_paths=drop_image_path_list) # Uniform Selection
     logJSD_RealDataset(epoch, threshold, labeled_trainloader, unlabeled_trainloader)
     
     for i in range(nb_repeat):

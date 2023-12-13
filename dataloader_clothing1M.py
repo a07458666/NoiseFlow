@@ -19,6 +19,7 @@ class clothing_dataset(Dataset):
         probability=[],
         paths=[],
         num_class=14,
+        drop_paths=[]
     ):
 
         self.root = root
@@ -73,7 +74,7 @@ class clothing_dataset(Dataset):
 
             ## Get the class indices
             for kk in range(num_class):
-                class_ind[kk] = [i for i,x in enumerate(train_imgs) if self.train_labels[x]==kk]
+                class_ind[kk] = [i for i,x in enumerate(train_imgs) if self.train_labels[x]==kk and x not in drop_paths]
 
             ## Creating the Class Balance
             for i in range(num_class):
@@ -236,7 +237,7 @@ class clothing_dataloader:
             ]
         )
 
-    def run(self, sample_r, mode,  pred=[], prob=[], paths=[]):
+    def run(self, sample_r, mode,  pred=[], prob=[], paths=[], drop_paths=[]):
         if mode == "warmup":
             warmup_dataset = clothing_dataset(sample_r,
                 self.root,
@@ -259,7 +260,8 @@ class clothing_dataloader:
                 num_samples=self.num_batches * self.batch_size,
                 pred=pred,
                 probability=prob,
-                paths=paths
+                paths=paths,
+                drop_paths=drop_paths
             )
             labeled_loader = DataLoader(
                 dataset=labeled_dataset,
@@ -274,7 +276,8 @@ class clothing_dataloader:
                 num_samples = self.num_batches * self.batch_size,
                 pred = pred,
                 probability=prob,
-                paths=paths
+                paths=paths,
+                drop_paths=drop_paths
             )
             unlabeled_loader = DataLoader(
                 dataset=unlabeled_dataset,
